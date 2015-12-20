@@ -145,7 +145,6 @@ func (b *Benchmark) GenerateLatencyDistribution(percentiles []float64, file stri
 }
 
 func (b *Benchmark) runRateLimited() error {
-	interval := int64(time.Second * time.Nanosecond)
 	for i := int64(0); i < b.numRequests; i++ {
 		b.tb.Wait(1)
 		before := time.Now()
@@ -153,7 +152,7 @@ func (b *Benchmark) runRateLimited() error {
 			return err
 		}
 		latency := time.Since(before).Nanoseconds()
-		if err := b.histogram.RecordCorrectedValue(latency, interval); err != nil {
+		if err := b.histogram.RecordCorrectedValue(latency, b.interval.Nanoseconds()); err != nil {
 			return err
 		}
 		if err := b.uncorrectedHistogram.RecordValue(latency); err != nil {
