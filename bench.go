@@ -43,9 +43,9 @@ type Benchmark struct {
 
 // NewBenchmark creates a Benchmark which runs a system benchmark using the
 // given Requester. The rateLimit argument specifies the number of requests per
-// interval to issue. A negative value disables rate limiting entirely. The
-// numRequests argument specifies the total number of requests to issue in the
-// benchmark.
+// interval to issue. A zero or negative value disables rate limiting entirely.
+// The numRequests argument specifies the total number of requests to issue in
+// the benchmark.
 func NewBenchmark(requester Requester, rateLimit int64, interval time.Duration,
 	numRequests int64) *Benchmark {
 
@@ -77,7 +77,7 @@ func (b *Benchmark) Run() error {
 	}
 
 	var err error
-	if b.rateLimit < 0 {
+	if b.rateLimit <= 0 {
 		err = b.runFullThrottle()
 	} else {
 		err = b.runRateLimited()
