@@ -69,8 +69,8 @@ func NewBenchmark(requester Requester, rateLimit int64, interval time.Duration,
 // unless Dispose is called.
 func (b *Benchmark) Run() error {
 	b.histogram.Reset()
-	b.tb.Put(b.rateLimit)
 	b.uncorrectedHistogram.Reset()
+	b.tb.Put(b.rateLimit)
 
 	if err := b.requester.Setup(); err != nil {
 		return err
