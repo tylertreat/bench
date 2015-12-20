@@ -1,3 +1,6 @@
+/*
+Package bench provides a generic framework for performing latency benchmarks.
+*/
 package bench
 
 import (
@@ -10,7 +13,7 @@ import (
 )
 
 const (
-	maxRecordableLatencyMS = 300000
+	maxRecordableLatencyNS = 300000000000
 	sigFigs                = 5
 )
 
@@ -31,6 +34,7 @@ type Requester interface {
 type Benchmark struct {
 	requester            Requester
 	rateLimit            int64
+	interval             time.Duration
 	tb                   *tb.Bucket
 	numRequests          int64
 	histogram            *hdrhistogram.Histogram
@@ -39,17 +43,24 @@ type Benchmark struct {
 
 // NewBenchmark creates a Benchmark which runs a system benchmark using the
 // given Requester. The rateLimit argument specifies the number of requests per
-// second to issue. A negative value disables rate limiting entirely. The
+// interval to issue. A negative value disables rate limiting entirely. The
 // numRequests argument specifies the total number of requests to issue in the
 // benchmark.
-func NewBenchmark(requester Requester, rateLimit, numRequests int64) *Benchmark {
+func NewBenchmark(requester Requester, rateLimit int64, interval time.Duration,
+	numRequests int64) *Benchmark {
+
+	if interval <= 0 {
+		interval = time.Second
+	}
+
 	return &Benchmark{
 		requester:            requester,
 		rateLimit:            rateLimit,
-		tb:                   tb.NewBucket(rateLimit, time.Second),
+		interval:             interval,
+		tb:                   tb.NewBucket(rateLimit, interval),
 		numRequests:          numRequests,
-		histogram:            hdrhistogram.New(0, maxRecordableLatencyMS, sigFigs),
-		uncorrectedHistogram: hdrhistogram.New(0, maxRecordableLatencyMS, sigFigs),
+		histogram:            hdrhistogram.New(0, maxRecordableLatencyNS, sigFigs),
+		uncorrectedHistogram: hdrhistogram.New(0, maxRecordableLatencyNS, sigFigs),
 	}
 }
 
@@ -134,14 +145,15 @@ func (b *Benchmark) GenerateLatencyDistribution(percentiles []float64, file stri
 }
 
 func (b *Benchmark) runRateLimited() error {
+	interval := int64(time.Second * time.Nanosecond)
 	for i := int64(0); i < b.numRequests; i++ {
 		b.tb.Wait(1)
 		before := time.Now()
 		if err := b.requester.Request(); err != nil {
 			return err
 		}
-		latency := int64(time.Since(before) / time.Millisecond)
-		if err := b.histogram.RecordCorrectedValue(latency, 1000); err != nil {
+		latency := time.Since(before).Nanoseconds()
+		if err := b.histogram.RecordCorrectedValue(latency, interval); err != nil {
 			return err
 		}
 		if err := b.uncorrectedHistogram.RecordValue(latency); err != nil {
@@ -157,8 +169,7 @@ func (b *Benchmark) runFullThrottle() error {
 		if err := b.requester.Request(); err != nil {
 			return err
 		}
-		latency := int64(time.Since(before) / time.Millisecond)
-		if err := b.histogram.RecordValue(latency); err != nil {
+		if err := b.histogram.RecordValue(time.Since(before).Nanoseconds()); err != nil {
 			return err
 		}
 	}
