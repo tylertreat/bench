@@ -75,8 +75,7 @@ func NewBenchmark(requester Requester, requestRate uint64, duration time.Duratio
 }
 
 // Run the benchmark and return an error if something went wrong along the way.
-// This can be called multiple times, overwriting the results on each call,
-// unless Dispose is called.
+// This can be called multiple times, overwriting the results on each call.
 func (b *Benchmark) Run() error {
 	b.histogram.Reset()
 	b.uncorrectedHistogram.Reset()
