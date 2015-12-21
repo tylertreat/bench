@@ -19,7 +19,7 @@ type NATSRequester struct {
 
 // Setup prepares the Requester for benchmarking.
 func (n *NATSRequester) Setup() error {
-	conn, err := nats.Connect(nats.DefaultURL)
+	conn, err := nats.Connect(n.URL)
 	if err != nil {
 		return err
 	}
