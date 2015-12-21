@@ -34,33 +34,24 @@ type Requester interface {
 type Benchmark struct {
 	requester            Requester
 	rateLimit            int64
-	interval             time.Duration
 	tb                   *tb.Bucket
-	numRequests          int64
+	duration             time.Duration
 	histogram            *hdrhistogram.Histogram
 	uncorrectedHistogram *hdrhistogram.Histogram
 }
 
 // NewBenchmark creates a Benchmark which runs a system benchmark using the
 // given Requester. The rateLimit argument specifies the number of requests per
-// interval to issue. A zero or negative value disables rate limiting entirely.
-// The numRequests argument specifies the total number of requests to issue in
-// the benchmark.
-func NewBenchmark(requester Requester, rateLimit int64, interval time.Duration,
-	numRequests int64) *Benchmark {
-
-	if interval <= 0 {
-		interval = time.Second
-	}
-
+// second to issue. A zero or negative value disables rate limiting entirely.
+// The duration argument specifies how long to run the benchmark.
+func NewBenchmark(requester Requester, rateLimit int64, duration time.Duration) *Benchmark {
 	return &Benchmark{
 		requester:            requester,
 		rateLimit:            rateLimit,
-		interval:             interval,
-		tb:                   tb.NewBucket(rateLimit, interval),
-		numRequests:          numRequests,
-		histogram:            hdrhistogram.New(0, maxRecordableLatencyNS, sigFigs),
-		uncorrectedHistogram: hdrhistogram.New(0, maxRecordableLatencyNS, sigFigs),
+		tb:                   tb.NewBucket(rateLimit, time.Second),
+		duration:             duration,
+		histogram:            hdrhistogram.New(1, maxRecordableLatencyNS, sigFigs),
+		uncorrectedHistogram: hdrhistogram.New(1, maxRecordableLatencyNS, sigFigs),
 	}
 }
 
@@ -114,8 +105,8 @@ func (b *Benchmark) GenerateLatencyDistribution(percentiles []float64, file stri
 
 	f.WriteString("Value    Percentile    TotalCount    1/(1-Percentile)\n\n")
 	for _, percentile := range percentiles {
-		value := b.histogram.ValueAtQuantile(percentile)
-		_, err := f.WriteString(fmt.Sprintf("%d    %f        %d            %f\n",
+		value := float64(b.histogram.ValueAtQuantile(percentile)) / 1000000
+		_, err := f.WriteString(fmt.Sprintf("%f    %f        %d            %f\n",
 			value, percentile/100, 0, 1/(1-(percentile/100))))
 		if err != nil {
 			return err
@@ -132,8 +123,8 @@ func (b *Benchmark) GenerateLatencyDistribution(percentiles []float64, file stri
 
 		f.WriteString("Value    Percentile    TotalCount    1/(1-Percentile)\n\n")
 		for _, percentile := range percentiles {
-			value := b.uncorrectedHistogram.ValueAtQuantile(percentile)
-			_, err := f.WriteString(fmt.Sprintf("%d    %f        %d            %f\n",
+			value := float64(b.uncorrectedHistogram.ValueAtQuantile(percentile)) / 1000000
+			_, err := f.WriteString(fmt.Sprintf("%f    %f        %d            %f\n",
 				value, percentile/100, 0, 1/(1-(percentile/100))))
 			if err != nil {
 				return err
@@ -145,25 +136,39 @@ func (b *Benchmark) GenerateLatencyDistribution(percentiles []float64, file stri
 }
 
 func (b *Benchmark) runRateLimited() error {
-	for i := int64(0); i < b.numRequests; i++ {
+	interval := time.Second * time.Nanosecond
+	stop := time.After(b.duration)
+	for {
+		select {
+		case <-stop:
+			return nil
+		default:
+		}
+
 		b.tb.Wait(1)
 		before := time.Now()
 		if err := b.requester.Request(); err != nil {
 			return err
 		}
 		latency := time.Since(before).Nanoseconds()
-		if err := b.histogram.RecordCorrectedValue(latency, b.interval.Nanoseconds()); err != nil {
+		if err := b.histogram.RecordCorrectedValue(latency, interval.Nanoseconds()/b.rateLimit); err != nil {
 			return err
 		}
 		if err := b.uncorrectedHistogram.RecordValue(latency); err != nil {
 			return err
 		}
 	}
-	return nil
 }
 
 func (b *Benchmark) runFullThrottle() error {
-	for i := int64(0); i < b.numRequests; i++ {
+	stop := time.After(b.duration)
+	for {
+		select {
+		case <-stop:
+			return nil
+		default:
+		}
+
 		before := time.Now()
 		if err := b.requester.Request(); err != nil {
 			return err
@@ -172,5 +177,4 @@ func (b *Benchmark) runFullThrottle() error {
 			return err
 		}
 	}
-	return nil
 }

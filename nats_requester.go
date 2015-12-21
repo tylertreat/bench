@@ -38,7 +38,7 @@ func (n *NATSRequester) Request() error {
 	if err := n.conn.Publish(n.Subject, n.msg); err != nil {
 		return err
 	}
-	_, err := n.sub.NextMsg(5 * time.Second)
+	_, err := n.sub.NextMsg(30 * time.Second)
 	return err
 }
 
