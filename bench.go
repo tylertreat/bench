@@ -4,8 +4,6 @@ Package bench provides a generic framework for performing latency benchmarks.
 package bench
 
 import (
-	"fmt"
-	"os"
 	"time"
 
 	"github.com/codahale/hdrhistogram"
@@ -26,20 +24,6 @@ type Requester interface {
 
 	// Teardown is called upon benchmark completion.
 	Teardown() error
-}
-
-// Summary contains the results of a Benchmark run.
-type Summary struct {
-	RequestRate          uint64
-	TotalRequests        uint64
-	TimeElapsed          time.Duration
-	Histogram            hdrhistogram.Histogram
-	UncorrectedHistogram hdrhistogram.Histogram
-}
-
-func (s *Summary) String() string {
-	return fmt.Sprintf("{RequestRate: %d, TotalRequests: %d, TimeElapsed: %s}",
-		s.RequestRate, s.TotalRequests, s.TimeElapsed)
 }
 
 // Benchmark performs a system benchmark by issuing a certain number of
@@ -74,15 +58,15 @@ func NewBenchmark(requester Requester, requestRate uint64, duration time.Duratio
 	}
 }
 
-// Run the benchmark and return an error if something went wrong along the way.
-// This can be called multiple times, overwriting the results on each call.
-func (b *Benchmark) Run() error {
+// Run the benchmark and return a summary of the results. An error is returned
+// if something went wrong along the way.
+func (b *Benchmark) Run() (*Summary, error) {
 	b.histogram.Reset()
 	b.uncorrectedHistogram.Reset()
 	b.totalRequests = 0
 
 	if err := b.requester.Setup(); err != nil {
-		return err
+		return nil, err
 	}
 
 	var err error
@@ -96,68 +80,11 @@ func (b *Benchmark) Run() error {
 		err = e
 	}
 
-	return err
+	return b.summarize(), err
 }
 
-// Summary returns a Summary of the last Benchmark run.
-func (b *Benchmark) Summary() *Summary {
-	return &Summary{
-		RequestRate:          b.requestRate,
-		TotalRequests:        b.totalRequests,
-		TimeElapsed:          b.elapsed,
-		Histogram:            *b.histogram,
-		UncorrectedHistogram: *b.uncorrectedHistogram,
-	}
-}
-
-// GenerateLatencyDistribution generates a text file containing the specified
-// latency distribution in a format plottable by
-// http://hdrhistogram.github.io/HdrHistogram/plotFiles.html. If percentiles is
-// nil, it defaults to a logarithmic percentile scale. If a rate limit was
-// specified for the benchmark, this will also generate an uncorrected
-// distribution file which does not account for coordinated omission.
-func (b *Benchmark) GenerateLatencyDistribution(percentiles []float64, file string) error {
-	if percentiles == nil {
-		percentiles = defaultPercentiles
-	}
-	f, err := os.Create(file)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	f.WriteString("Value    Percentile    TotalCount    1/(1-Percentile)\n\n")
-	for _, percentile := range percentiles {
-		value := float64(b.histogram.ValueAtQuantile(percentile)) / 1000000
-		_, err := f.WriteString(fmt.Sprintf("%f    %f        %d            %f\n",
-			value, percentile/100, 0, 1/(1-(percentile/100))))
-		if err != nil {
-			return err
-		}
-	}
-
-	// Generate uncorrected distribution.
-	if b.requestRate > 0 {
-		f, err := os.Create("uncorrected_" + file)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-
-		f.WriteString("Value    Percentile    TotalCount    1/(1-Percentile)\n\n")
-		for _, percentile := range percentiles {
-			value := float64(b.uncorrectedHistogram.ValueAtQuantile(percentile)) / 1000000
-			_, err := f.WriteString(fmt.Sprintf("%f    %f        %d            %f\n",
-				value, percentile/100, 0, 1/(1-(percentile/100))))
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
+// runRateLimited runs the Benchmark by attempting to issue the configured
+// number of requests per second.
 func (b *Benchmark) runRateLimited() (time.Duration, error) {
 	var (
 		interval = b.expectedInterval.Nanoseconds()
@@ -190,6 +117,7 @@ func (b *Benchmark) runRateLimited() (time.Duration, error) {
 	}
 }
 
+// runFullThrottle runs the Benchmark without a limit on requests per second.
 func (b *Benchmark) runFullThrottle() (time.Duration, error) {
 	var (
 		stop  = time.After(b.duration)
@@ -210,5 +138,16 @@ func (b *Benchmark) runFullThrottle() (time.Duration, error) {
 			return 0, err
 		}
 		b.totalRequests += 1
+	}
+}
+
+// summarize returns a Summary of the last Benchmark run.
+func (b *Benchmark) summarize() *Summary {
+	return &Summary{
+		RequestRate:          b.requestRate,
+		TotalRequests:        b.totalRequests,
+		TimeElapsed:          b.elapsed,
+		Histogram:            hdrhistogram.Import(b.histogram.Export()),
+		UncorrectedHistogram: hdrhistogram.Import(b.uncorrectedHistogram.Export()),
 	}
 }
