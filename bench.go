@@ -38,10 +38,8 @@ type Summary struct {
 }
 
 func (s *Summary) String() string {
-	str := ""
-	str += fmt.Sprintf("{RequestRate: %d, TotalRequests: %d, TimeElapsed: %s}",
+	return fmt.Sprintf("{RequestRate: %d, TotalRequests: %d, TimeElapsed: %s}",
 		s.RequestRate, s.TotalRequests, s.TimeElapsed)
-	return str
 }
 
 // Benchmark performs a system benchmark by issuing a certain number of
