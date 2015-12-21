@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/codahale/hdrhistogram"
-	"github.com/tsenart/tb"
 )
 
 const (
@@ -29,27 +28,49 @@ type Requester interface {
 	Teardown() error
 }
 
+// Summary contains the results of a Benchmark run.
+type Summary struct {
+	RequestRate          uint64
+	TotalRequests        uint64
+	TimeElapsed          time.Duration
+	Histogram            hdrhistogram.Histogram
+	UncorrectedHistogram hdrhistogram.Histogram
+}
+
+func (s *Summary) String() string {
+	str := ""
+	str += fmt.Sprintf("{RequestRate: %d, TotalRequests: %d, TimeElapsed: %s}",
+		s.RequestRate, s.TotalRequests, s.TimeElapsed)
+	return str
+}
+
 // Benchmark performs a system benchmark by issuing a certain number of
 // requests at a specified rate and capturing the latency distribution.
 type Benchmark struct {
 	requester            Requester
-	rateLimit            int64
-	tb                   *tb.Bucket
+	requestRate          uint64
 	duration             time.Duration
+	expectedInterval     time.Duration
 	histogram            *hdrhistogram.Histogram
 	uncorrectedHistogram *hdrhistogram.Histogram
+	totalRequests        uint64
+	elapsed              time.Duration
 }
 
 // NewBenchmark creates a Benchmark which runs a system benchmark using the
-// given Requester. The rateLimit argument specifies the number of requests per
-// second to issue. A zero or negative value disables rate limiting entirely.
-// The duration argument specifies how long to run the benchmark.
-func NewBenchmark(requester Requester, rateLimit int64, duration time.Duration) *Benchmark {
+// given Requester. The requestRate argument specifies the number of requests
+// per second to issue. A zero value disables rate limiting entirely. The
+// duration argument specifies how long to run the benchmark.
+func NewBenchmark(requester Requester, requestRate uint64, duration time.Duration) *Benchmark {
+	var interval time.Duration
+	if requestRate > 0 {
+		interval = time.Duration(1000000000 / requestRate)
+	}
 	return &Benchmark{
 		requester:            requester,
-		rateLimit:            rateLimit,
-		tb:                   tb.NewBucket(rateLimit, time.Second),
+		requestRate:          requestRate,
 		duration:             duration,
+		expectedInterval:     interval,
 		histogram:            hdrhistogram.New(1, maxRecordableLatencyNS, sigFigs),
 		uncorrectedHistogram: hdrhistogram.New(1, maxRecordableLatencyNS, sigFigs),
 	}
@@ -61,17 +82,17 @@ func NewBenchmark(requester Requester, rateLimit int64, duration time.Duration) 
 func (b *Benchmark) Run() error {
 	b.histogram.Reset()
 	b.uncorrectedHistogram.Reset()
-	b.tb.Put(b.rateLimit)
+	b.totalRequests = 0
 
 	if err := b.requester.Setup(); err != nil {
 		return err
 	}
 
 	var err error
-	if b.rateLimit <= 0 {
-		err = b.runFullThrottle()
+	if b.requestRate == 0 {
+		b.elapsed, err = b.runFullThrottle()
 	} else {
-		err = b.runRateLimited()
+		b.elapsed, err = b.runRateLimited()
 	}
 
 	if e := b.requester.Teardown(); e != nil {
@@ -81,10 +102,15 @@ func (b *Benchmark) Run() error {
 	return err
 }
 
-// Dispose resources used by the Benchmark. Once this is called, this Benchmark
-// can no longer be used.
-func (b *Benchmark) Dispose() {
-	b.tb.Close()
+// Summary returns a Summary of the last Benchmark run.
+func (b *Benchmark) Summary() *Summary {
+	return &Summary{
+		RequestRate:          b.requestRate,
+		TotalRequests:        b.totalRequests,
+		TimeElapsed:          b.elapsed,
+		Histogram:            *b.histogram,
+		UncorrectedHistogram: *b.uncorrectedHistogram,
+	}
 }
 
 // GenerateLatencyDistribution generates a text file containing the specified
@@ -114,7 +140,7 @@ func (b *Benchmark) GenerateLatencyDistribution(percentiles []float64, file stri
 	}
 
 	// Generate uncorrected distribution.
-	if b.rateLimit > 0 {
+	if b.requestRate > 0 {
 		f, err := os.Create("uncorrected_" + file)
 		if err != nil {
 			return err
@@ -135,46 +161,57 @@ func (b *Benchmark) GenerateLatencyDistribution(percentiles []float64, file stri
 	return nil
 }
 
-func (b *Benchmark) runRateLimited() error {
-	interval := time.Second * time.Nanosecond
-	stop := time.After(b.duration)
+func (b *Benchmark) runRateLimited() (time.Duration, error) {
+	var (
+		interval = b.expectedInterval.Nanoseconds()
+		stop     = time.After(b.duration)
+		start    = time.Now()
+	)
 	for {
 		select {
 		case <-stop:
-			return nil
+			return time.Since(start), nil
 		default:
 		}
 
-		b.tb.Wait(1)
 		before := time.Now()
 		if err := b.requester.Request(); err != nil {
-			return err
+			return 0, err
 		}
 		latency := time.Since(before).Nanoseconds()
-		if err := b.histogram.RecordCorrectedValue(latency, interval.Nanoseconds()/b.rateLimit); err != nil {
-			return err
+		if err := b.histogram.RecordCorrectedValue(latency, interval); err != nil {
+			return 0, err
 		}
 		if err := b.uncorrectedHistogram.RecordValue(latency); err != nil {
-			return err
+			return 0, err
+		}
+		b.totalRequests += 1
+
+		for b.expectedInterval > (time.Now().Sub(before)) {
+			// Busy spin
 		}
 	}
 }
 
-func (b *Benchmark) runFullThrottle() error {
-	stop := time.After(b.duration)
+func (b *Benchmark) runFullThrottle() (time.Duration, error) {
+	var (
+		stop  = time.After(b.duration)
+		start = time.Now()
+	)
 	for {
 		select {
 		case <-stop:
-			return nil
+			return time.Since(start), nil
 		default:
 		}
 
 		before := time.Now()
 		if err := b.requester.Request(); err != nil {
-			return err
+			return 0, err
 		}
 		if err := b.histogram.RecordValue(time.Since(before).Nanoseconds()); err != nil {
-			return err
+			return 0, err
 		}
+		b.totalRequests += 1
 	}
 }
