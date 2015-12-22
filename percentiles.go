@@ -1,6 +1,11 @@
 package bench
 
-var defaultPercentiles = []float64{
+// Percentiles is a list of percentiles to include in a latency distribution,
+// e.g. 10.0, 50.0, 99.0, 99.99, etc.
+type Percentiles []float64
+
+// Logarithmic percentile scale.
+var Logarithmic = Percentiles{
 	0.0,
 	10.0,
 	20.0,

@@ -33,9 +33,9 @@ func (s *Summary) String() string {
 // request rate was specified for the benchmark, this will also generate an
 // uncorrected distribution file which does not account for coordinated
 // omission.
-func (s *Summary) GenerateLatencyDistribution(percentiles []float64, file string) error {
+func (s *Summary) GenerateLatencyDistribution(percentiles Percentiles, file string) error {
 	if percentiles == nil {
-		percentiles = defaultPercentiles
+		percentiles = Logarithmic
 	}
 	f, err := os.Create(file)
 	if err != nil {
