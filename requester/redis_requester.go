@@ -1,4 +1,4 @@
-package bench
+package requester
 
 import "github.com/garyburd/redigo/redis"
 

@@ -1,4 +1,4 @@
-package bench
+package requester
 
 import "net/http"
 
