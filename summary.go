@@ -15,13 +15,14 @@ type Summary struct {
 	TimeElapsed          time.Duration
 	Histogram            *hdrhistogram.Histogram
 	UncorrectedHistogram *hdrhistogram.Histogram
-	RequestsPerSecond    []uint64
+	Throughput           float64
 }
 
 // String returns a stringified version of the Summary.
 func (s *Summary) String() string {
-	return fmt.Sprintf("{RequestRate: %d, TotalRequests: %d, TimeElapsed: %s}",
-		s.RequestRate, s.TotalRequests, s.TimeElapsed)
+	return fmt.Sprintf(
+		"{RequestRate: %d, TotalRequests: %d, TimeElapsed: %s, Throughput: %.2f/s}",
+		s.RequestRate, s.TotalRequests, s.TimeElapsed, s.Throughput)
 }
 
 // GenerateLatencyDistribution generates a text file containing the specified
