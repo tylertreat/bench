@@ -1,4 +1,4 @@
-# bench
+# bench [![GoDoc](https://godoc.org/github.com/tylertreat/bench?status.svg)](https://godoc.org/github.com/tylertreat/bench)
 
 Bench is a generic latency benchmarking library. It's generic in the sense that it exposes a simple interface (`Requester`) which can be implemented for various systems under test. Several [example Requesters](https://github.com/tylertreat/bench/tree/master/requester) are provided out of the box.
 
