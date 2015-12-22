@@ -4,6 +4,7 @@ Package bench provides a generic framework for performing latency benchmarks.
 package bench
 
 import (
+	"sync/atomic"
 	"time"
 
 	"github.com/codahale/hdrhistogram"
@@ -36,7 +37,9 @@ type Benchmark struct {
 	histogram            *hdrhistogram.Histogram
 	uncorrectedHistogram *hdrhistogram.Histogram
 	totalRequests        uint64
+	tickRequests         uint64
 	elapsed              time.Duration
+	requestsPerSecond    []uint64
 }
 
 // NewBenchmark creates a Benchmark which runs a system benchmark using the
@@ -69,12 +72,22 @@ func (b *Benchmark) Run() (*Summary, error) {
 		return nil, err
 	}
 
-	var err error
+	var (
+		err               error
+		stop              = make(chan struct{})
+		requestsPerSecond = make(chan []uint64, 1)
+	)
+
+	go b.startRequestCounter(stop, requestsPerSecond)
+
 	if b.requestRate == 0 {
 		b.elapsed, err = b.runFullThrottle()
 	} else {
 		b.elapsed, err = b.runRateLimited()
 	}
+
+	close(stop)
+	b.requestsPerSecond = <-requestsPerSecond
 
 	if e := b.requester.Teardown(); e != nil {
 		err = e
@@ -109,7 +122,7 @@ func (b *Benchmark) runRateLimited() (time.Duration, error) {
 		if err := b.uncorrectedHistogram.RecordValue(latency); err != nil {
 			return 0, err
 		}
-		b.totalRequests += 1
+		b.incrementRequestCount()
 
 		for b.expectedInterval > (time.Now().Sub(before)) {
 			// Busy spin
@@ -137,7 +150,33 @@ func (b *Benchmark) runFullThrottle() (time.Duration, error) {
 		if err := b.histogram.RecordValue(time.Since(before).Nanoseconds()); err != nil {
 			return 0, err
 		}
-		b.totalRequests += 1
+		b.incrementRequestCount()
+	}
+}
+
+// incrementRequestCount increments the running total number of requests and
+// the running number of requests for the current tick.
+func (b *Benchmark) incrementRequestCount() {
+	b.totalRequests += 1
+	atomic.AddUint64(&b.tickRequests, 1)
+}
+
+// startRequestCounter ticks every second and collects the number of requests
+// occurring in each tick. Closing the stop channel causes the tick counts to
+// be put on the result channel and stops the ticker. This should be called in
+// a goroutine.
+func (b *Benchmark) startRequestCounter(stop <-chan struct{}, result chan<- []uint64) {
+	counts := []uint64{}
+	ticker := time.NewTicker(time.Second)
+	for {
+		select {
+		case <-ticker.C:
+			counts = append(counts, atomic.LoadUint64(&b.tickRequests))
+			atomic.StoreUint64(&b.tickRequests, 0)
+		case <-stop:
+			result <- counts
+			return
+		}
 	}
 }
 
@@ -149,5 +188,6 @@ func (b *Benchmark) summarize() *Summary {
 		TimeElapsed:          b.elapsed,
 		Histogram:            hdrhistogram.Import(b.histogram.Export()),
 		UncorrectedHistogram: hdrhistogram.Import(b.uncorrectedHistogram.Export()),
+		RequestsPerSecond:    b.requestsPerSecond,
 	}
 }

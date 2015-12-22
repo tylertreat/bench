@@ -15,6 +15,7 @@ type Summary struct {
 	TimeElapsed          time.Duration
 	Histogram            *hdrhistogram.Histogram
 	UncorrectedHistogram *hdrhistogram.Histogram
+	RequestsPerSecond    []uint64
 }
 
 // String returns a stringified version of the Summary.
