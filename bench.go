@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/codahale/hdrhistogram"
-	"github.com/tylertreat/bench/requester"
 )
 
 const (
@@ -16,10 +15,22 @@ const (
 	sigFigs                = 5
 )
 
+// Requester synchronously issues requests for a particular system under test.
+type Requester interface {
+	// Setup prepares the Requester for benchmarking.
+	Setup() error
+
+	// Request performs a synchronous request to the system under test.
+	Request() error
+
+	// Teardown is called upon benchmark completion.
+	Teardown() error
+}
+
 // Benchmark performs a system benchmark by issuing a certain number of
 // requests at a specified rate and capturing the latency distribution.
 type Benchmark struct {
-	requester            requester.Requester
+	requester            Requester
 	requestRate          uint64
 	duration             time.Duration
 	expectedInterval     time.Duration
@@ -35,8 +46,7 @@ type Benchmark struct {
 // given Requester. The requestRate argument specifies the number of requests
 // per second to issue. A zero value disables rate limiting entirely. The
 // duration argument specifies how long to run the benchmark.
-func NewBenchmark(requester requester.Requester, requestRate uint64,
-	duration time.Duration) *Benchmark {
+func NewBenchmark(requester Requester, requestRate uint64, duration time.Duration) *Benchmark {
 
 	var interval time.Duration
 	if requestRate > 0 {
