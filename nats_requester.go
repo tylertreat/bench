@@ -25,6 +25,7 @@ func (n *NATSRequester) Setup() error {
 	}
 	sub, err := conn.SubscribeSync(n.Subject)
 	if err != nil {
+		conn.Close()
 		return err
 	}
 	n.conn = conn
@@ -44,8 +45,7 @@ func (n *NATSRequester) Request() error {
 
 // Teardown is called upon benchmark completion.
 func (n *NATSRequester) Teardown() error {
-	err := n.sub.Unsubscribe()
-	if err != nil {
+	if err := n.sub.Unsubscribe(); err != nil {
 		return err
 	}
 	n.sub = nil
