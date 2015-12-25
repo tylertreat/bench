@@ -10,6 +10,7 @@ import (
 
 // Summary contains the results of a Benchmark run.
 type Summary struct {
+	Connections          uint64
 	RequestRate          uint64
 	TotalRequests        uint64
 	TimeElapsed          time.Duration
@@ -21,8 +22,8 @@ type Summary struct {
 // String returns a stringified version of the Summary.
 func (s *Summary) String() string {
 	return fmt.Sprintf(
-		"{RequestRate: %d, TotalRequests: %d, TimeElapsed: %s, Throughput: %.2f/s}",
-		s.RequestRate, s.TotalRequests, s.TimeElapsed, s.Throughput)
+		"{Connections: %d, RequestRate: %d, TotalRequests: %d, TimeElapsed: %s, Throughput: %.2f/s}",
+		s.Connections, s.RequestRate, s.TotalRequests, s.TimeElapsed, s.Throughput)
 }
 
 // GenerateLatencyDistribution generates a text file containing the specified

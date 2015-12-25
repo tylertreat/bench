@@ -113,6 +113,7 @@ func (b *Benchmark) Run() (*Summary, error) {
 		}
 		summary.merge(result.summary)
 	}
+	summary.Connections = b.connections
 
 	return summary, nil
 }
