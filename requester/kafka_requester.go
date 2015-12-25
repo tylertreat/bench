@@ -2,17 +2,36 @@ package requester
 
 import (
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/Shopify/sarama"
+	"github.com/tylertreat/bench"
 )
 
-// KafkaRequester implements Requester by publishing a message to Kafka and
+// KafkaRequesterFactory implements RequesterFactory by creating a Requester
+// which publishes messages to Kafka and waits to consume them.
+type KafkaRequesterFactory struct {
+	URLs        []string
+	PayloadSize int
+	Topic       string
+}
+
+// GetRequester returns a new Requester, called for each Benchmark connection.
+func (k *KafkaRequesterFactory) GetRequester(num uint64) bench.Requester {
+	return &kafkaRequester{
+		urls:        k.URLs,
+		payloadSize: k.PayloadSize,
+		topic:       k.Topic + "-" + strconv.FormatUint(num, 10),
+	}
+}
+
+// kafkaRequester implements Requester by publishing a message to Kafka and
 // waiting to consume it.
-type KafkaRequester struct {
-	URL               string
-	PayloadSize       int
-	Topic             string
+type kafkaRequester struct {
+	urls              []string
+	payloadSize       int
+	topic             string
 	producer          sarama.SyncProducer
 	consumer          sarama.Consumer
 	partitionConsumer sarama.PartitionConsumer
@@ -20,19 +39,19 @@ type KafkaRequester struct {
 }
 
 // Setup prepares the Requester for benchmarking.
-func (k *KafkaRequester) Setup() error {
+func (k *kafkaRequester) Setup() error {
 	config := sarama.NewConfig()
-	producer, err := sarama.NewSyncProducer([]string{k.URL}, config)
+	producer, err := sarama.NewSyncProducer(k.urls, config)
 	if err != nil {
 		return err
 	}
 
-	consumer, err := sarama.NewConsumer([]string{k.URL}, nil)
+	consumer, err := sarama.NewConsumer(k.urls, nil)
 	if err != nil {
 		producer.Close()
 		return err
 	}
-	partitionConsumer, err := consumer.ConsumePartition(k.Topic, 0, sarama.OffsetNewest)
+	partitionConsumer, err := consumer.ConsumePartition(k.topic, 0, sarama.OffsetNewest)
 	if err != nil {
 		producer.Close()
 		consumer.Close()
@@ -43,14 +62,14 @@ func (k *KafkaRequester) Setup() error {
 	k.consumer = consumer
 	k.partitionConsumer = partitionConsumer
 	k.msg = &sarama.ProducerMessage{
-		Topic: k.Topic,
-		Value: sarama.ByteEncoder(make([]byte, k.PayloadSize)),
+		Topic: k.topic,
+		Value: sarama.ByteEncoder(make([]byte, k.payloadSize)),
 	}
 	return nil
 }
 
 // Request performs a synchronous request to the system under test.
-func (k *KafkaRequester) Request() error {
+func (k *kafkaRequester) Request() error {
 	_, _, err := k.producer.SendMessage(k.msg)
 	if err != nil {
 		return err
@@ -65,7 +84,7 @@ func (k *KafkaRequester) Request() error {
 }
 
 // Teardown is called upon benchmark completion.
-func (k *KafkaRequester) Teardown() error {
+func (k *kafkaRequester) Teardown() error {
 	if err := k.partitionConsumer.Close(); err != nil {
 		return err
 	}

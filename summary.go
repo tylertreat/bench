@@ -74,3 +74,15 @@ func (s *Summary) GenerateLatencyDistribution(percentiles Percentiles, file stri
 
 	return nil
 }
+
+// merge the other Summary into this one.
+func (s *Summary) merge(o *Summary) {
+	if o.TimeElapsed > s.TimeElapsed {
+		s.TimeElapsed = o.TimeElapsed
+	}
+	s.Histogram.Merge(o.Histogram)
+	s.UncorrectedHistogram.Merge(o.UncorrectedHistogram)
+	s.TotalRequests += o.TotalRequests
+	s.Throughput += o.Throughput
+	s.RequestRate += o.RequestRate
+}
