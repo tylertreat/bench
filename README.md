@@ -20,13 +20,13 @@ import (
 )
 
 func main() {
-	r := &requester.RedisPubSubRequester{
+	r := &requester.RedisPubSubRequesterFactory{
 		URL:         ":6379",
 		PayloadSize: 500,
 		Channel:     "benchmark",
 	}
 
-	benchmark := bench.NewBenchmark(r, 10000, 30*time.Second)
+	benchmark := bench.NewBenchmark(r, 10000, 1, 30*time.Second)
 	summary, err := benchmark.Run()
 	if err != nil {
 		panic(err)
