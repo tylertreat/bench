@@ -32,7 +32,7 @@ type kafkaRequester struct {
 	urls              []string
 	payloadSize       int
 	topic             string
-	producer          sarama.SyncProducer
+	producer          sarama.AsyncProducer
 	consumer          sarama.Consumer
 	partitionConsumer sarama.PartitionConsumer
 	msg               *sarama.ProducerMessage
@@ -41,7 +41,7 @@ type kafkaRequester struct {
 // Setup prepares the Requester for benchmarking.
 func (k *kafkaRequester) Setup() error {
 	config := sarama.NewConfig()
-	producer, err := sarama.NewSyncProducer(k.urls, config)
+	producer, err := sarama.NewAsyncProducer(k.urls, config)
 	if err != nil {
 		return err
 	}
@@ -65,16 +65,13 @@ func (k *kafkaRequester) Setup() error {
 		Topic: k.topic,
 		Value: sarama.ByteEncoder(make([]byte, k.payloadSize)),
 	}
+
 	return nil
 }
 
 // Request performs a synchronous request to the system under test.
 func (k *kafkaRequester) Request() error {
-	_, _, err := k.producer.SendMessage(k.msg)
-	if err != nil {
-		return err
-	}
-
+	k.producer.Input() <- k.msg
 	select {
 	case <-k.partitionConsumer.Messages():
 		return nil
