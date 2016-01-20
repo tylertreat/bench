@@ -10,20 +10,23 @@ import (
 
 // Summary contains the results of a Benchmark run.
 type Summary struct {
-	Connections          uint64
-	RequestRate          uint64
-	TotalRequests        uint64
-	TimeElapsed          time.Duration
-	Histogram            *hdrhistogram.Histogram
-	UncorrectedHistogram *hdrhistogram.Histogram
-	Throughput           float64
+	Connections      uint64
+	RequestRate      uint64
+	TotalRequests    uint64
+	TotalErrors      uint64
+	TimeElapsed      time.Duration
+	Histogram        *hdrhistogram.Histogram
+	UnHistogram      *hdrhistogram.Histogram
+	ErrorHistogram   *hdrhistogram.Histogram
+	UnErrorHistogram *hdrhistogram.Histogram
+	Throughput       float64
 }
 
 // String returns a stringified version of the Summary.
 func (s *Summary) String() string {
 	return fmt.Sprintf(
-		"{Connections: %d, RequestRate: %d, TotalRequests: %d, TimeElapsed: %s, Throughput: %.2f/s}",
-		s.Connections, s.RequestRate, s.TotalRequests, s.TimeElapsed, s.Throughput)
+		"{Connections: %d, RequestRate: %d, TotalRequests: %d, TotalErrors: %d, TimeElapsed: %s, Throughput: %.2f/s}",
+		s.Connections, s.RequestRate, s.TotalRequests, s.TotalErrors, s.TimeElapsed, s.Throughput)
 }
 
 // GenerateLatencyDistribution generates a text file containing the specified
@@ -35,6 +38,22 @@ func (s *Summary) String() string {
 // uncorrected distribution file which does not account for coordinated
 // omission.
 func (s *Summary) GenerateLatencyDistribution(percentiles Percentiles, file string) error {
+	return generateLatencyDistribution(s.Histogram, s.UnHistogram, s.RequestRate, percentiles, file)
+}
+
+// GenerateErrorLatencyDistribution generates a text file containing the specified
+// latency distribution (of requests that resulted in errors) in a format plottable by
+// http://hdrhistogram.github.io/HdrHistogram/plotFiles.html. Percentiles is a
+// list of percentiles to include, e.g. 10.0, 50.0, 99.0, 99.99, etc. If
+// percentiles is nil, it defaults to a logarithmic percentile scale. If a
+// request rate was specified for the benchmark, this will also generate an
+// uncorrected distribution file which does not account for coordinated
+// omission.
+func (s *Summary) GenerateErrorLatencyDistribution(percentiles Percentiles, file string) error {
+	return generateLatencyDistribution(s.ErrorHistogram, s.UnErrorHistogram, s.RequestRate, percentiles, file)
+}
+
+func generateLatencyDistribution(histogram, unHistogram *hdrhistogram.Histogram, requestRate uint64, percentiles Percentiles, file string) error {
 	if percentiles == nil {
 		percentiles = Logarithmic
 	}
@@ -46,7 +65,7 @@ func (s *Summary) GenerateLatencyDistribution(percentiles Percentiles, file stri
 
 	f.WriteString("Value    Percentile    TotalCount    1/(1-Percentile)\n\n")
 	for _, percentile := range percentiles {
-		value := float64(s.Histogram.ValueAtQuantile(percentile)) / 1000000
+		value := float64(histogram.ValueAtQuantile(percentile)) / 1000000
 		_, err := f.WriteString(fmt.Sprintf("%f    %f        %d            %f\n",
 			value, percentile/100, 0, 1/(1-(percentile/100))))
 		if err != nil {
@@ -55,7 +74,7 @@ func (s *Summary) GenerateLatencyDistribution(percentiles Percentiles, file stri
 	}
 
 	// Generate uncorrected distribution.
-	if s.RequestRate > 0 {
+	if requestRate > 0 {
 		f, err := os.Create("uncorrected_" + file)
 		if err != nil {
 			return err
@@ -64,7 +83,7 @@ func (s *Summary) GenerateLatencyDistribution(percentiles Percentiles, file stri
 
 		f.WriteString("Value    Percentile    TotalCount    1/(1-Percentile)\n\n")
 		for _, percentile := range percentiles {
-			value := float64(s.UncorrectedHistogram.ValueAtQuantile(percentile)) / 1000000
+			value := float64(unHistogram.ValueAtQuantile(percentile)) / 1000000
 			_, err := f.WriteString(fmt.Sprintf("%f    %f        %d            %f\n",
 				value, percentile/100, 0, 1/(1-(percentile/100))))
 			if err != nil {
@@ -82,8 +101,11 @@ func (s *Summary) merge(o *Summary) {
 		s.TimeElapsed = o.TimeElapsed
 	}
 	s.Histogram.Merge(o.Histogram)
-	s.UncorrectedHistogram.Merge(o.UncorrectedHistogram)
+	s.UnHistogram.Merge(o.UnHistogram)
+	s.ErrorHistogram.Merge(o.ErrorHistogram)
+	s.UnErrorHistogram.Merge(o.UnErrorHistogram)
 	s.TotalRequests += o.TotalRequests
+	s.TotalErrors += o.TotalErrors
 	s.Throughput += o.Throughput
 	s.RequestRate += o.RequestRate
 }
