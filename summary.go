@@ -10,23 +10,23 @@ import (
 
 // Summary contains the results of a Benchmark run.
 type Summary struct {
-	Connections      uint64
-	RequestRate      uint64
-	TotalRequests    uint64
-	TotalErrors      uint64
-	TimeElapsed      time.Duration
-	Histogram        *hdrhistogram.Histogram
-	UnHistogram      *hdrhistogram.Histogram
-	ErrorHistogram   *hdrhistogram.Histogram
-	UnErrorHistogram *hdrhistogram.Histogram
-	Throughput       float64
+	Connections        uint64
+	RequestRate        uint64
+	SuccessTotal       uint64
+	ErrorTotal         uint64
+	TimeElapsed        time.Duration
+	SuccessHistogram   *hdrhistogram.Histogram
+	UnSuccessHistogram *hdrhistogram.Histogram
+	ErrorHistogram     *hdrhistogram.Histogram
+	UnErrorHistogram   *hdrhistogram.Histogram
+	Throughput         float64
 }
 
 // String returns a stringified version of the Summary.
 func (s *Summary) String() string {
 	return fmt.Sprintf(
-		"{Connections: %d, RequestRate: %d, TotalRequests: %d, TotalErrors: %d, TimeElapsed: %s, Throughput: %.2f/s}",
-		s.Connections, s.RequestRate, s.TotalRequests, s.TotalErrors, s.TimeElapsed, s.Throughput)
+		"\n{Connections: %d, RequestRate: %d, RequestTotal: %d, SuccessTotal: %d, ErrorTotal: %d, TimeElapsed: %s, Throughput: %.2f/s}",
+		s.Connections, s.RequestRate, (s.SuccessTotal + s.ErrorTotal), s.SuccessTotal, s.ErrorTotal, s.TimeElapsed, s.Throughput)
 }
 
 // GenerateLatencyDistribution generates a text file containing the specified
@@ -38,7 +38,7 @@ func (s *Summary) String() string {
 // uncorrected distribution file which does not account for coordinated
 // omission.
 func (s *Summary) GenerateLatencyDistribution(percentiles Percentiles, file string) error {
-	return generateLatencyDistribution(s.Histogram, s.UnHistogram, s.RequestRate, percentiles, file)
+	return generateLatencyDistribution(s.SuccessHistogram, s.UnSuccessHistogram, s.RequestRate, percentiles, file)
 }
 
 // GenerateErrorLatencyDistribution generates a text file containing the specified
@@ -100,12 +100,12 @@ func (s *Summary) merge(o *Summary) {
 	if o.TimeElapsed > s.TimeElapsed {
 		s.TimeElapsed = o.TimeElapsed
 	}
-	s.Histogram.Merge(o.Histogram)
-	s.UnHistogram.Merge(o.UnHistogram)
+	s.SuccessHistogram.Merge(o.SuccessHistogram)
+	s.UnSuccessHistogram.Merge(o.UnSuccessHistogram)
 	s.ErrorHistogram.Merge(o.ErrorHistogram)
 	s.UnErrorHistogram.Merge(o.UnErrorHistogram)
-	s.TotalRequests += o.TotalRequests
-	s.TotalErrors += o.TotalErrors
+	s.SuccessTotal += o.SuccessTotal
+	s.ErrorTotal += o.ErrorTotal
 	s.Throughput += o.Throughput
 	s.RequestRate += o.RequestRate
 }

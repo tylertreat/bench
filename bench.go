@@ -127,17 +127,17 @@ type result struct {
 // connectionBenchmark performs a system benchmark by issuing requests at a
 // specified rate and capturing the latency distribution.
 type connectionBenchmark struct {
-	requester        Requester
-	requestRate      uint64
-	duration         time.Duration
-	expectedInterval time.Duration
-	histogram        *hdrhistogram.Histogram
-	unHistogram      *hdrhistogram.Histogram
-	errorHistogram   *hdrhistogram.Histogram
-	unErrorHistogram *hdrhistogram.Histogram
-	totalRequests    uint64
-	totalErrors      uint64
-	elapsed          time.Duration
+	requester          Requester
+	requestRate        uint64
+	duration           time.Duration
+	expectedInterval   time.Duration
+	successHistogram   *hdrhistogram.Histogram
+	unSuccessHistogram *hdrhistogram.Histogram
+	errorHistogram     *hdrhistogram.Histogram
+	unErrorHistogram   *hdrhistogram.Histogram
+	successTotal       uint64
+	errorTotal         uint64
+	elapsed            time.Duration
 }
 
 // newConnectionBenchmark creates a connectionBenchmark which runs a system
@@ -151,25 +151,25 @@ func newConnectionBenchmark(requester Requester, requestRate uint64, duration ti
 	}
 
 	return &connectionBenchmark{
-		requester:        requester,
-		requestRate:      requestRate,
-		duration:         duration,
-		expectedInterval: interval,
-		histogram:        hdrhistogram.New(1, maxRecordableLatencyNS, sigFigs),
-		unHistogram:      hdrhistogram.New(1, maxRecordableLatencyNS, sigFigs),
-		errorHistogram:   hdrhistogram.New(1, maxRecordableLatencyNS, sigFigs),
-		unErrorHistogram: hdrhistogram.New(1, maxRecordableLatencyNS, sigFigs),
+		requester:          requester,
+		requestRate:        requestRate,
+		duration:           duration,
+		expectedInterval:   interval,
+		successHistogram:   hdrhistogram.New(1, maxRecordableLatencyNS, sigFigs),
+		unSuccessHistogram: hdrhistogram.New(1, maxRecordableLatencyNS, sigFigs),
+		errorHistogram:     hdrhistogram.New(1, maxRecordableLatencyNS, sigFigs),
+		unErrorHistogram:   hdrhistogram.New(1, maxRecordableLatencyNS, sigFigs),
 	}
 }
 
 // setup prepares the benchmark for running.
 func (c *connectionBenchmark) setup() error {
-	c.histogram.Reset()
-	c.unHistogram.Reset()
+	c.successHistogram.Reset()
+	c.unSuccessHistogram.Reset()
 	c.errorHistogram.Reset()
 	c.unErrorHistogram.Reset()
-	c.totalRequests = 0
-	c.totalErrors = 0
+	c.successTotal = 0
+	c.errorTotal = 0
 	return c.requester.Setup()
 }
 
@@ -215,15 +215,16 @@ func (c *connectionBenchmark) runRateLimited() (time.Duration, error) {
 			if err := c.unErrorHistogram.RecordValue(latency); err != nil {
 				return 0, err
 			}
-			c.totalErrors++
+			c.errorTotal++
+		} else {
+			if err := c.successHistogram.RecordCorrectedValue(latency, interval); err != nil {
+				return 0, err
+			}
+			if err := c.unSuccessHistogram.RecordValue(latency); err != nil {
+				return 0, err
+			}
+			c.successTotal++
 		}
-		if err := c.histogram.RecordCorrectedValue(latency, interval); err != nil {
-			return 0, err
-		}
-		if err := c.unHistogram.RecordValue(latency); err != nil {
-			return 0, err
-		}
-		c.totalRequests++
 
 		for c.expectedInterval > (time.Now().Sub(before)) {
 			// Busy spin
@@ -251,27 +252,27 @@ func (c *connectionBenchmark) runFullThrottle() (time.Duration, error) {
 			if err := c.errorHistogram.RecordValue(latency); err != nil {
 				return 0, err
 			}
-			c.totalErrors++
+			c.errorTotal++
+		} else {
+			if err := c.successHistogram.RecordValue(latency); err != nil {
+				return 0, err
+			}
+			c.successTotal++
 		}
-
-		if err := c.histogram.RecordValue(latency); err != nil {
-			return 0, err
-		}
-		c.totalRequests++
 	}
 }
 
 // summarize returns a Summary of the last benchmark run.
 func (c *connectionBenchmark) summarize() *Summary {
 	return &Summary{
-		TotalRequests:    c.totalRequests,
-		TotalErrors:      c.totalErrors,
-		TimeElapsed:      c.elapsed,
-		Histogram:        hdrhistogram.Import(c.histogram.Export()),
-		UnHistogram:      hdrhistogram.Import(c.unHistogram.Export()),
-		ErrorHistogram:   hdrhistogram.Import(c.errorHistogram.Export()),
-		UnErrorHistogram: hdrhistogram.Import(c.unErrorHistogram.Export()),
-		Throughput:       float64(c.totalRequests) / c.elapsed.Seconds(),
-		RequestRate:      c.requestRate,
+		SuccessTotal:       c.successTotal,
+		ErrorTotal:         c.errorTotal,
+		TimeElapsed:        c.elapsed,
+		SuccessHistogram:   hdrhistogram.Import(c.successHistogram.Export()),
+		UnSuccessHistogram: hdrhistogram.Import(c.unSuccessHistogram.Export()),
+		ErrorHistogram:     hdrhistogram.Import(c.errorHistogram.Export()),
+		UnErrorHistogram:   hdrhistogram.Import(c.unErrorHistogram.Export()),
+		Throughput:         float64(c.successTotal+c.errorTotal) / c.elapsed.Seconds(),
+		RequestRate:        c.requestRate,
 	}
 }
