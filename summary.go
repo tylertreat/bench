@@ -10,16 +10,16 @@ import (
 
 // Summary contains the results of a Benchmark run.
 type Summary struct {
-	Connections        uint64
-	RequestRate        uint64
-	SuccessTotal       uint64
-	ErrorTotal         uint64
-	TimeElapsed        time.Duration
-	SuccessHistogram   *hdrhistogram.Histogram
-	UnSuccessHistogram *hdrhistogram.Histogram
-	ErrorHistogram     *hdrhistogram.Histogram
-	UnErrorHistogram   *hdrhistogram.Histogram
-	Throughput         float64
+	Connections                 uint64
+	RequestRate                 uint64
+	SuccessTotal                uint64
+	ErrorTotal                  uint64
+	TimeElapsed                 time.Duration
+	SuccessHistogram            *hdrhistogram.Histogram
+	UncorrectedSuccessHistogram *hdrhistogram.Histogram
+	ErrorHistogram              *hdrhistogram.Histogram
+	UncorrectedErrorHistogram   *hdrhistogram.Histogram
+	Throughput                  float64
 }
 
 // String returns a stringified version of the Summary.
@@ -38,7 +38,7 @@ func (s *Summary) String() string {
 // uncorrected distribution file which does not account for coordinated
 // omission.
 func (s *Summary) GenerateLatencyDistribution(percentiles Percentiles, file string) error {
-	return generateLatencyDistribution(s.SuccessHistogram, s.UnSuccessHistogram, s.RequestRate, percentiles, file)
+	return generateLatencyDistribution(s.SuccessHistogram, s.UncorrectedSuccessHistogram, s.RequestRate, percentiles, file)
 }
 
 // GenerateErrorLatencyDistribution generates a text file containing the specified
@@ -50,7 +50,7 @@ func (s *Summary) GenerateLatencyDistribution(percentiles Percentiles, file stri
 // uncorrected distribution file which does not account for coordinated
 // omission.
 func (s *Summary) GenerateErrorLatencyDistribution(percentiles Percentiles, file string) error {
-	return generateLatencyDistribution(s.ErrorHistogram, s.UnErrorHistogram, s.RequestRate, percentiles, file)
+	return generateLatencyDistribution(s.ErrorHistogram, s.UncorrectedErrorHistogram, s.RequestRate, percentiles, file)
 }
 
 func generateLatencyDistribution(histogram, unHistogram *hdrhistogram.Histogram, requestRate uint64, percentiles Percentiles, file string) error {
@@ -101,9 +101,9 @@ func (s *Summary) merge(o *Summary) {
 		s.TimeElapsed = o.TimeElapsed
 	}
 	s.SuccessHistogram.Merge(o.SuccessHistogram)
-	s.UnSuccessHistogram.Merge(o.UnSuccessHistogram)
+	s.UncorrectedSuccessHistogram.Merge(o.UncorrectedSuccessHistogram)
 	s.ErrorHistogram.Merge(o.ErrorHistogram)
-	s.UnErrorHistogram.Merge(o.UnErrorHistogram)
+	s.UncorrectedErrorHistogram.Merge(o.UncorrectedErrorHistogram)
 	s.SuccessTotal += o.SuccessTotal
 	s.ErrorTotal += o.ErrorTotal
 	s.Throughput += o.Throughput
