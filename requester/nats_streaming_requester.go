@@ -16,11 +16,13 @@ type NATSStreamingRequesterFactory struct {
 	PayloadSize int
 	Subject     string
 	ClientID    string
+	URL         string
 }
 
 // GetRequester returns a new Requester, called for each Benchmark connection.
 func (n *NATSStreamingRequesterFactory) GetRequester(num uint64) bench.Requester {
 	return &natsStreamingRequester{
+		url:         n.URL,
 		clientID:    n.ClientID,
 		payloadSize: n.PayloadSize,
 		subject:     n.Subject + "-" + strconv.FormatUint(num, 10),
@@ -30,6 +32,7 @@ func (n *NATSStreamingRequesterFactory) GetRequester(num uint64) bench.Requester
 // natsStreamingRequester implements Requester by publishing a message to NATS
 // Streaming and waiting to receive it.
 type natsStreamingRequester struct {
+	url         string
 	clientID    string
 	payloadSize int
 	subject     string
@@ -41,7 +44,7 @@ type natsStreamingRequester struct {
 
 // Setup prepares the Requester for benchmarking.
 func (n *natsStreamingRequester) Setup() error {
-	conn, err := stan.Connect("test-cluster", n.clientID)
+	conn, err := stan.Connect("test-cluster", n.clientID, stan.NatsURL(n.url))
 	if err != nil {
 		return err
 	}
