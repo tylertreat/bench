@@ -2,6 +2,7 @@ package requester
 
 import (
 	"errors"
+	"math/rand"
 	"strconv"
 	"time"
 
@@ -59,6 +60,9 @@ func (n *natsStreamingRequester) Setup() error {
 	n.conn = conn
 	n.sub = sub
 	n.msg = make([]byte, n.payloadSize)
+	for i := 0; i < n.payloadSize; i++ {
+		n.msg[i] = 'A' + uint8(rand.Intn(26))
+	}
 	return nil
 }
 

@@ -2,6 +2,7 @@ package requester
 
 import (
 	"errors"
+	"math/rand"
 	"strconv"
 	"time"
 
@@ -61,9 +62,13 @@ func (k *kafkaRequester) Setup() error {
 	k.producer = producer
 	k.consumer = consumer
 	k.partitionConsumer = partitionConsumer
+	msg := make([]byte, k.payloadSize)
+	for i := 0; i < k.payloadSize; i++ {
+		msg[i] = 'A' + uint8(rand.Intn(26))
+	}
 	k.msg = &sarama.ProducerMessage{
 		Topic: k.topic,
-		Value: sarama.ByteEncoder(make([]byte, k.payloadSize)),
+		Value: sarama.ByteEncoder(msg),
 	}
 
 	return nil
