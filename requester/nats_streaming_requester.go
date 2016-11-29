@@ -64,7 +64,7 @@ func (n *natsStreamingRequester) Setup() error {
 
 // Request performs a synchronous request to the system under test.
 func (n *natsStreamingRequester) Request() error {
-	if err := n.conn.Publish(n.subject, n.msg); err != nil {
+	if _, err := n.conn.PublishAsync(n.subject, n.msg, nil); err != nil {
 		return err
 	}
 	select {
