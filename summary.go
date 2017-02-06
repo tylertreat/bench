@@ -53,6 +53,13 @@ func (s *Summary) GenerateErrorLatencyDistribution(percentiles Percentiles, file
 	return generateLatencyDistribution(s.ErrorHistogram, s.UncorrectedErrorHistogram, s.RequestRate, percentiles, file)
 }
 
+func getOneByPercentile(percentile float64) float64 {
+	if percentile < 1 {
+		return 1 / (1 - (percentile / 100))
+	}
+	return float64(1000000)
+}
+
 func generateLatencyDistribution(histogram, unHistogram *hdrhistogram.Histogram, requestRate uint64, percentiles Percentiles, file string) error {
 	if percentiles == nil {
 		percentiles = Logarithmic
@@ -66,8 +73,9 @@ func generateLatencyDistribution(histogram, unHistogram *hdrhistogram.Histogram,
 	f.WriteString("Value    Percentile    TotalCount    1/(1-Percentile)\n\n")
 	for _, percentile := range percentiles {
 		value := float64(histogram.ValueAtQuantile(percentile)) / 1000000
+		oneByPercentile := getOneByPercentile(percentile)
 		_, err := f.WriteString(fmt.Sprintf("%f    %f        %d            %f\n",
-			value, percentile/100, 0, 1/(1-(percentile/100))))
+			value, percentile/100, 0, oneByPercentile))
 		if err != nil {
 			return err
 		}
@@ -84,8 +92,9 @@ func generateLatencyDistribution(histogram, unHistogram *hdrhistogram.Histogram,
 		f.WriteString("Value    Percentile    TotalCount    1/(1-Percentile)\n\n")
 		for _, percentile := range percentiles {
 			value := float64(unHistogram.ValueAtQuantile(percentile)) / 1000000
+			oneByPercentile := getOneByPercentile(percentile)
 			_, err := f.WriteString(fmt.Sprintf("%f    %f        %d            %f\n",
-				value, percentile/100, 0, 1/(1-(percentile/100))))
+				value, percentile/100, 0, oneByPercentile))
 			if err != nil {
 				return err
 			}
