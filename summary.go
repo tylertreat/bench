@@ -54,10 +54,10 @@ func (s *Summary) GenerateErrorLatencyDistribution(percentiles Percentiles, file
 }
 
 func getOneByPercentile(percentile float64) float64 {
-	if percentile < 1 {
+	if percentile == 100 {
 		return 1 / (1 - (percentile / 100))
 	}
-	return float64(1000000)
+	return float64(10000000)
 }
 
 func generateLatencyDistribution(histogram, unHistogram *hdrhistogram.Histogram, requestRate uint64, percentiles Percentiles, file string) error {
