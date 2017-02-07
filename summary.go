@@ -54,7 +54,7 @@ func (s *Summary) GenerateErrorLatencyDistribution(percentiles Percentiles, file
 }
 
 func getOneByPercentile(percentile float64) float64 {
-	if percentile == 100 {
+	if percentile < 100 {
 		return 1 / (1 - (percentile / 100))
 	}
 	return float64(10000000)
