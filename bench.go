@@ -4,8 +4,12 @@ Package bench provides a generic framework for performing latency benchmarks.
 package bench
 
 import (
+	"context"
+	"math"
 	"sync"
 	"time"
+
+	"golang.org/x/time/rate"
 
 	"github.com/codahale/hdrhistogram"
 )
@@ -13,6 +17,7 @@ import (
 const (
 	maxRecordableLatencyNS = 300000000000
 	sigFigs                = 5
+	defaultBurst           = 1000
 )
 
 // RequesterFactory creates new Requesters.
@@ -48,9 +53,11 @@ type Benchmark struct {
 // connections specified, so if requestRate is 50,000 and connections is 10,
 // each connection will attempt to issue 5,000 requests per second. A zero
 // value disables rate limiting entirely. The duration argument specifies how
-// long to run the benchmark.
+// long to run the benchmark. Requests will be issued in bursts with the
+// specified burst rate. If burst == 0 then burst will be the lesser of
+// (0.1 * requestRate) and 1000 but at least 1.
 func NewBenchmark(factory RequesterFactory, requestRate, connections uint64,
-	duration time.Duration) *Benchmark {
+	duration time.Duration, burst uint64) *Benchmark {
 
 	if connections == 0 {
 		connections = 1
@@ -59,7 +66,7 @@ func NewBenchmark(factory RequesterFactory, requestRate, connections uint64,
 	benchmarks := make([]*connectionBenchmark, connections)
 	for i := uint64(0); i < connections; i++ {
 		benchmarks[i] = newConnectionBenchmark(
-			factory.GetRequester(i), requestRate/connections, duration)
+			factory.GetRequester(i), requestRate/connections, duration, burst)
 	}
 
 	return &Benchmark{connections: connections, benchmarks: benchmarks}
@@ -138,16 +145,23 @@ type connectionBenchmark struct {
 	successTotal                uint64
 	errorTotal                  uint64
 	elapsed                     time.Duration
+	burst                       int
 }
 
 // newConnectionBenchmark creates a connectionBenchmark which runs a system
 // benchmark using the given Requester. The requestRate argument specifies the
 // number of requests per second to issue. A zero value disables rate limiting
 // entirely. The duration argument specifies how long to run the benchmark.
-func newConnectionBenchmark(requester Requester, requestRate uint64, duration time.Duration) *connectionBenchmark {
+func newConnectionBenchmark(requester Requester, requestRate uint64, duration time.Duration, burst uint64) *connectionBenchmark {
 	var interval time.Duration
 	if requestRate > 0 {
 		interval = time.Duration(1000000000 / requestRate)
+	}
+
+	if burst == 0 {
+
+		// burst is at least 1 - otherwise it's the smaller of DefaultBurst and 10% of requestRate
+		burst = uint64(math.Max(1, math.Min(float64(requestRate)*0.1, float64(defaultBurst))))
 	}
 
 	return &connectionBenchmark{
@@ -159,6 +173,7 @@ func newConnectionBenchmark(requester Requester, requestRate uint64, duration ti
 		uncorrectedSuccessHistogram: hdrhistogram.New(1, maxRecordableLatencyNS, sigFigs),
 		errorHistogram:              hdrhistogram.New(1, maxRecordableLatencyNS, sigFigs),
 		uncorrectedErrorHistogram:   hdrhistogram.New(1, maxRecordableLatencyNS, sigFigs),
+		burst: int(burst),
 	}
 }
 
@@ -197,6 +212,9 @@ func (c *connectionBenchmark) runRateLimited() (time.Duration, error) {
 		interval = c.expectedInterval.Nanoseconds()
 		stop     = time.After(c.duration)
 		start    = time.Now()
+		limit    = rate.Every(c.expectedInterval)
+		limiter  = rate.NewLimiter(limit, c.burst)
+		ctx      = context.Background()
 	)
 	for {
 		select {
@@ -205,29 +223,28 @@ func (c *connectionBenchmark) runRateLimited() (time.Duration, error) {
 		default:
 		}
 
-		before := time.Now()
-		err := c.requester.Request()
-		latency := time.Since(before).Nanoseconds()
-		if err != nil {
-			if err := c.errorHistogram.RecordCorrectedValue(latency, interval); err != nil {
-				return 0, err
+		limiter.WaitN(ctx, c.burst)
+		for i := 0; i < c.burst; i++ {
+			before := time.Now()
+			err := c.requester.Request()
+			latency := time.Since(before).Nanoseconds()
+			if err != nil {
+				if err := c.errorHistogram.RecordCorrectedValue(latency, interval); err != nil {
+					return 0, err
+				}
+				if err := c.uncorrectedErrorHistogram.RecordValue(latency); err != nil {
+					return 0, err
+				}
+				c.errorTotal++
+			} else {
+				if err := c.successHistogram.RecordCorrectedValue(latency, interval); err != nil {
+					return 0, err
+				}
+				if err := c.uncorrectedSuccessHistogram.RecordValue(latency); err != nil {
+					return 0, err
+				}
+				c.successTotal++
 			}
-			if err := c.uncorrectedErrorHistogram.RecordValue(latency); err != nil {
-				return 0, err
-			}
-			c.errorTotal++
-		} else {
-			if err := c.successHistogram.RecordCorrectedValue(latency, interval); err != nil {
-				return 0, err
-			}
-			if err := c.uncorrectedSuccessHistogram.RecordValue(latency); err != nil {
-				return 0, err
-			}
-			c.successTotal++
-		}
-
-		for c.expectedInterval > (time.Now().Sub(before)) {
-			// Busy spin
 		}
 	}
 }
