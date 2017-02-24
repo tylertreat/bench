@@ -26,7 +26,7 @@ func main() {
 		Channel:     "benchmark",
 	}
 
-	benchmark := bench.NewBenchmark(r, 10000, 1, 30*time.Second)
+	benchmark := bench.NewBenchmark(r, 10000, 1, 30*time.Second, 0)
 	summary, err := benchmark.Run()
 	if err != nil {
 		panic(err)
