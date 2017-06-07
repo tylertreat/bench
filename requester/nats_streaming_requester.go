@@ -2,6 +2,7 @@ package requester
 
 import (
 	"errors"
+	"fmt"
 	"math/rand"
 	"strconv"
 	"time"
@@ -45,7 +46,7 @@ type natsStreamingRequester struct {
 
 // Setup prepares the Requester for benchmarking.
 func (n *natsStreamingRequester) Setup() error {
-	conn, err := stan.Connect("test-cluster", n.clientID, stan.NatsURL(n.url))
+	conn, err := stan.Connect("test-cluster", fmt.Sprintf("%s-%d", n.clientID, time.Now().UnixNano()), stan.NatsURL(n.url))
 	if err != nil {
 		return err
 	}
