@@ -12,7 +12,7 @@ import (
 type NSQRequesterFactory struct {
 	URL         string
 	PayloadSize int
-	Topic     string
+	Topic       string
 }
 
 // GetRequester returns a new Requester, called for each Benchmark connection.
@@ -20,8 +20,8 @@ func (n *NSQRequesterFactory) GetRequester(num uint64) bench.Requester {
 	return &nsqRequester{
 		url:         n.URL,
 		payloadSize: n.PayloadSize,
-		topic:     n.Topic + "-" + strconv.FormatUint(num, 10),
-		channel:   n.Topic + "-" + strconv.FormatUint(num, 10),
+		topic:       n.Topic + "-" + strconv.FormatUint(num, 10),
+		channel:     n.Topic + "-" + strconv.FormatUint(num, 10),
 	}
 }
 
@@ -30,11 +30,11 @@ func (n *NSQRequesterFactory) GetRequester(num uint64) bench.Requester {
 type nsqRequester struct {
 	url         string
 	payloadSize int
-	topic     string
-	channel   string
-	producer  *nsq.Producer
-	consumer  *nsq.Consumer
-	msg			[]byte
+	topic       string
+	channel     string
+	producer    *nsq.Producer
+	consumer    *nsq.Consumer
+	msg         []byte
 }
 
 // Setup prepares the Requester for benchmarking.
@@ -50,7 +50,7 @@ func (n *nsqRequester) Setup() error {
 	}
 	consumer.AddConcurrentHandlers(nsq.HandlerFunc(func(m *nsq.Message) error {
 		return nil
-	}),1)
+	}), 1)
 	if err := consumer.ConnectToNSQD(n.url); err != nil {
 		producer.Stop()
 		return err
@@ -76,7 +76,7 @@ func (n *nsqRequester) Teardown() error {
 	if err := n.consumer.DisconnectFromNSQD(n.url); err != nil {
 		return err
 	}
-	n.producer.Stop()	
+	n.producer.Stop()
 
 	n.consumer = nil
 	n.producer = nil
