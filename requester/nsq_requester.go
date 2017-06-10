@@ -1,7 +1,10 @@
 package requester
 
 import (
+	"errors"
+	"math/rand"
 	"strconv"
+	"time"
 
 	"github.com/nsqio/go-nsq"
 	"github.com/tylertreat/bench"
@@ -35,7 +38,7 @@ type nsqRequester struct {
 	producer    *nsq.Producer
 	consumer    *nsq.Consumer
 	msg         []byte
-	msgChan		chang []byte
+	msgChan     chan []byte
 }
 
 // Setup prepares the Requester for benchmarking.
@@ -51,7 +54,8 @@ func (n *nsqRequester) Setup() error {
 	}
 	n.msgChan = make(chan []byte)
 	consumer.AddConcurrentHandlers(nsq.HandlerFunc(func(m *nsq.Message) error {
-		n.msgChan <- msg.Data
+		m.Finish()
+		n.msgChan <- m.Body
 		return nil
 	}), 1)
 	if err := consumer.ConnectToNSQD(n.url); err != nil {
