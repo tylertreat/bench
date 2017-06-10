@@ -35,6 +35,7 @@ type nsqRequester struct {
 	producer    *nsq.Producer
 	consumer    *nsq.Consumer
 	msg         []byte
+	msgChan		chang []byte
 }
 
 // Setup prepares the Requester for benchmarking.
@@ -48,18 +49,21 @@ func (n *nsqRequester) Setup() error {
 	if err != nil {
 		return err
 	}
+	n.msgChan = make(chan []byte)
 	consumer.AddConcurrentHandlers(nsq.HandlerFunc(func(m *nsq.Message) error {
+		n.msgChan <- msg.Data
 		return nil
 	}), 1)
 	if err := consumer.ConnectToNSQD(n.url); err != nil {
 		producer.Stop()
 		return err
 	}
-
 	n.producer = producer
 	n.consumer = consumer
 	n.msg = make([]byte, n.payloadSize)
-
+	for i := 0; i < n.payloadSize; i++ {
+		n.msg[i] = 'A' + uint8(rand.Intn(26))
+	}
 	return nil
 }
 
@@ -68,7 +72,12 @@ func (n *nsqRequester) Request() error {
 	if err := n.producer.Publish(n.topic, n.msg); err != nil {
 		return err
 	}
-	return nil
+	select {
+	case <-n.msgChan:
+		return nil
+	case <-time.After(30 * time.Second):
+		return errors.New("timeout")
+	}
 }
 
 // Teardown is called upon benchmark completion.
