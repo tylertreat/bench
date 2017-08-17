@@ -61,13 +61,14 @@ func getOneByPercentile(percentile float64) float64 {
 }
 
 func generateLatencyDistribution(histogram, unHistogram *hdrhistogram.Histogram, requestRate uint64, percentiles histwriter.Percentiles, file string) error {
-	if err := histwriter.WriteDistributionFile(histogram, percentiles, file); err != nil {
+	scaleFactor := 0.000001 // Scale ns to ms.
+	if err := histwriter.WriteDistributionFile(histogram, percentiles, scaleFactor, file); err != nil {
 		return err
 	}
 
 	// Generate uncorrected distribution.
 	if requestRate > 0 {
-		if err := histwriter.WriteDistributionFile(unHistogram, percentiles, fmt.Sprintf("uncorrected_%s", file)); err != nil {
+		if err := histwriter.WriteDistributionFile(unHistogram, percentiles, scaleFactor, fmt.Sprintf("uncorrected_%s", file)); err != nil {
 			return err
 		}
 	}
