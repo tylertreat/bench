@@ -33,6 +33,6 @@ func main() {
 	}
 
 	fmt.Println(summary)
-	summary.GenerateLatencyDistribution(bench.Logarithmic, "redis.txt")
+	summary.GenerateLatencyDistribution(nil, "redis.txt")
 }
 ```
